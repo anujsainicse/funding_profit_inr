@@ -10,7 +10,7 @@ import os
 from datetime import datetime
 
 # Add coindcx-futures directory to path
-sys.path.append(os.path.join(os.path.dirname(__file__), '.claude', 'coindcx-futures'))
+sys.path.append(os.path.join(os.path.dirname(__file__), 'coindcx-futures'))
 
 from coindcx_futures import CoinDCXFutures
 
