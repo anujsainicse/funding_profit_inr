@@ -1,16 +1,18 @@
 # CoinDCX Futures Trading & Monitoring Suite
 
-A comprehensive Python-based trading suite for CoinDCX futures markets with real-time price monitoring and automated trading capabilities.
+A comprehensive Python-based trading suite for CoinDCX futures markets with **real-time price monitoring**, **Redis data storage**, and automated trading capabilities.
 
 ## 🚀 Features
 
-### Real-Time Price Monitoring (`coindcx_fu_ltp_ws_redis.py`)
+### Real-Time Price Monitoring with Redis Storage (`coindcx_fu_ltp_ws_redis.py`)
 - **WebSocket-based live price feeds** for futures markets
+- **Redis database integration** for real-time LTP storage
 - **Automatic reconnection** with intelligent retry logic
 - **Multi-symbol monitoring** with support for both USDT and INR pairs
-- **Real-time price updates** every 10 seconds
+- **Instant data persistence** - prices saved to Redis immediately on arrival
 - **Connection health monitoring** with status indicators
-- **Formatted price display** with appropriate decimal precision
+- **Structured data format** with ticker, price, and timestamp
+- **Automatic data cleanup** with configurable TTL (Time To Live)
 
 ### Trading Engine (`SF_INR_Trading_Engine.py`)
 - **Spot-Futures arbitrage** trading framework
@@ -25,6 +27,7 @@ A comprehensive Python-based trading suite for CoinDCX futures markets with real
 - Python 3.8 or higher
 - CoinDCX account with API access
 - Active internet connection for WebSocket feeds
+- **Redis server** for data storage (local or remote)
 
 ### Setup Instructions
 
@@ -55,28 +58,71 @@ A comprehensive Python-based trading suite for CoinDCX futures markets with real
    - Create a new API key with futures trading permissions
    - Copy the API key and secret to your `.env` file
 
+5. **Install and Setup Redis**
+
+   **Option A: Local Redis Installation**
+   ```bash
+   # macOS (using Homebrew)
+   brew install redis
+   brew services start redis
+
+   # Ubuntu/Debian
+   sudo apt update
+   sudo apt install redis-server
+   sudo systemctl start redis-server
+
+   # Windows (using WSL or Docker)
+   docker run -d -p 6379:6379 redis:latest
+   ```
+
+   **Option B: Redis Cloud/Remote**
+   - Update Redis connection settings in `coindcx_fu_ltp_ws_redis.py`
+   - Modify the `redis.Redis()` configuration with your remote details
+
 ## 🔧 Usage
 
-### Real-Time Price Monitoring
+### Real-Time Price Monitoring with Redis Storage
 
-Run the WebSocket price monitor:
+**1. Start Redis server** (if not running):
+```bash
+redis-server
+```
 
+**2. Run the WebSocket price monitor**:
 ```bash
 python coindcx_fu_ltp_ws_redis.py
 ```
 
-**Sample Output:**
+**3. Sample Console Output:**
 ```
-==================================================
-FUTURES LTP 🟢 - 14:30:25
-Status: Connected (Live)
-==================================================
-B-BTC_USDT     : $43,245.50
-B-ETH_USDT     : $2,587.32
-B-SOL_USDT     : $98.45
-B-BNB_USDT     : $312.67
-B-DOGE_USDT    : $0.0823
-==================================================
+[14:30:25] ✅ Redis connected successfully!
+[14:30:26] ✅ WebSocket connected successfully!
+[14:30:26] Subscribed to B-BTC_USDT
+[14:30:26] Subscribed to B-ETH_USDT
+[14:30:26] Subscribed to B-SOL_USDT
+
+Monitoring 5 futures tokens...
+LTP data is being saved to Redis in real-time. Minimal console output. Press Ctrl+C to stop.
+
+[14:31:25] 🟢 Connected - 5/5 symbols active - Data saving to Redis
+```
+
+**4. Check stored data in Redis**:
+```bash
+# Connect to Redis CLI
+redis-cli
+
+# List all LTP keys
+127.0.0.1:6379> keys ltp:*
+1) "ltp:B-BTC_USDT"
+2) "ltp:B-ETH_USDT"
+3) "ltp:B-SOL_USDT"
+4) "ltp:B-BNB_USDT"
+5) "ltp:B-DOGE_USDT"
+
+# Get specific price data
+127.0.0.1:6379> get ltp:B-BTC_USDT
+"{\"ticker\": \"B-BTC_USDT\", \"price\": 43245.50, \"timestamp\": \"2024-09-29T14:30:25.123456\"}"
 ```
 
 ### Customizing Monitored Symbols
@@ -126,6 +172,83 @@ main(
 - `B-ADA_USDT` - Cardano
 - `B-DOT_USDT` - Polkadot
 
+## 💾 Redis Data Structure
+
+### Data Storage Format
+The application stores Last Traded Price (LTP) data in Redis with the following structure:
+
+**Redis Key Pattern**: `ltp:{symbol}`
+- Example: `ltp:B-BTC_USDT`, `ltp:B-ETH_USDT`
+
+**JSON Data Format**:
+```json
+{
+  "ticker": "B-BTC_USDT",
+  "price": 43245.50,
+  "timestamp": "2024-09-29T14:30:25.123456"
+}
+```
+
+### Key Features
+- **Real-time updates**: Data saved instantly when price changes occur
+- **Structured format**: Consistent JSON structure for easy parsing
+- **ISO timestamps**: Precise timing for each price update
+- **Auto-cleanup**: 1-hour TTL (Time To Live) prevents memory buildup
+- **High-performance**: Redis provides microsecond-level access times
+
+### Redis Commands for Data Access
+
+**List all active symbols**:
+```bash
+redis-cli keys "ltp:*"
+```
+
+**Get latest price for specific symbol**:
+```bash
+redis-cli get "ltp:B-BTC_USDT"
+```
+
+**Monitor real-time updates**:
+```bash
+redis-cli monitor
+```
+
+**Check key expiration time**:
+```bash
+redis-cli ttl "ltp:B-BTC_USDT"
+```
+
+### Integration Examples
+
+**Python - Read from Redis**:
+```python
+import redis
+import json
+
+# Connect to Redis
+r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
+
+# Get latest BTC price
+btc_data = json.loads(r.get('ltp:B-BTC_USDT'))
+print(f"BTC Price: ${btc_data['price']} at {btc_data['timestamp']}")
+
+# Get all symbols and prices
+for key in r.keys('ltp:*'):
+    data = json.loads(r.get(key))
+    print(f"{data['ticker']}: ${data['price']}")
+```
+
+**Node.js - Read from Redis**:
+```javascript
+const redis = require('redis');
+const client = redis.createClient();
+
+// Get latest ETH price
+const ethData = await client.get('ltp:B-ETH_USDT');
+const eth = JSON.parse(ethData);
+console.log(`ETH Price: $${eth.price} at ${eth.timestamp}`);
+```
+
 ## 🔐 Security Features
 
 - **Environment-based configuration** - API keys stored in `.env` file
@@ -141,11 +264,13 @@ main(
 - Automatic subscription management
 - Connection health monitoring
 
-### Price Monitor (`coindcx_fu_ltp_ws_redis.py`)
-- Main monitoring application
-- Price formatting and display
-- Real-time updates with connection status
-- Graceful error handling and reconnection
+### Price Monitor with Redis Integration (`coindcx_fu_ltp_ws_redis.py`)
+- Main monitoring application with database storage
+- Real-time data persistence to Redis
+- WebSocket event handling and price processing
+- Connection health monitoring for both WebSocket and Redis
+- Graceful error handling and automatic reconnection
+- Structured JSON data format for easy integration
 
 ### Trading Framework (`SF_INR_Trading_Engine.py`)
 - Modular trading system
@@ -172,6 +297,82 @@ The WebSocket client includes robust connection management:
 - **Formatted price display** with currency symbols
 - **Multi-decimal precision** based on price ranges
 
+## 🛠️ Troubleshooting
+
+### Redis Connection Issues
+
+**Problem**: `Redis connection failed - running without Redis storage`
+**Solutions**:
+1. **Check if Redis is running**:
+   ```bash
+   redis-cli ping
+   # Should return: PONG
+   ```
+
+2. **Start Redis server**:
+   ```bash
+   # macOS
+   brew services start redis
+
+   # Linux
+   sudo systemctl start redis-server
+
+   # Manual start
+   redis-server
+   ```
+
+3. **Check Redis configuration**:
+   - Verify host/port settings in the Python script
+   - Default: `localhost:6379`
+   - Check if Redis is bound to correct interface
+
+**Problem**: `ModuleNotFoundError: No module named 'redis'`
+**Solution**:
+```bash
+pip install redis>=4.5.0
+```
+
+**Problem**: Redis data not persisting
+**Solutions**:
+1. **Check TTL settings**: Keys expire after 1 hour by default
+2. **Verify Redis persistence**: Check `redis.conf` for save settings
+3. **Monitor Redis memory**: Use `redis-cli info memory`
+
+### WebSocket Connection Issues
+
+**Problem**: WebSocket connection fails
+**Solutions**:
+1. Check internet connection
+2. Verify CoinDCX API credentials in `.env` file
+3. Check if API has futures trading permissions
+
+**Problem**: No price updates received
+**Solutions**:
+1. Verify symbol names match CoinDCX format (`B-{COIN}_USDT`)
+2. Check if symbols are actively traded
+3. Monitor WebSocket connection status
+
+### Performance Optimization
+
+**High Memory Usage**:
+- Reduce number of monitored symbols
+- Adjust Redis TTL settings
+- Monitor with: `redis-cli info memory`
+
+**Slow Redis Operations**:
+- Use Redis pipelining for bulk operations
+- Consider Redis clustering for high load
+- Monitor with: `redis-cli --latency`
+
+### Common Error Messages
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `Connection refused` | Redis server not running | Start Redis server |
+| `Authentication failed` | Wrong Redis password | Check Redis auth settings |
+| `READONLY` | Redis in slave mode | Connect to master Redis instance |
+| `OOM` | Redis out of memory | Increase memory or reduce TTL |
+
 ## 🚨 Important Notes
 
 ⚠️ **Security Warning**: Never commit your `.env` file to version control. It contains sensitive API credentials.
@@ -179,6 +380,8 @@ The WebSocket client includes robust connection management:
 ⚠️ **Trading Risk**: This software is for educational and development purposes. Always test with small amounts and understand the risks involved in cryptocurrency trading.
 
 ⚠️ **API Limits**: Be aware of CoinDCX API rate limits and adjust your usage accordingly.
+
+⚠️ **Redis Security**: In production, secure Redis with authentication and network restrictions.
 
 ## 🤝 Contributing
 

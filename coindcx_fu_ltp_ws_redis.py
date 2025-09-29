@@ -8,6 +8,8 @@ import json
 import sys
 import os
 from datetime import datetime
+import redis
+import logging
 
 # Add coindcx-futures directory to path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'coindcx-futures'))
@@ -16,9 +18,29 @@ from coindcx_futures import CoinDCXFutures
 
 
 async def monitor_futures_ltp(coins):
-    """Monitor futures LTP using WebSocket with automatic reconnection"""
+    """Monitor futures LTP using WebSocket with automatic reconnection and Redis storage"""
     client = CoinDCXFutures()
-    
+
+    # Redis connection setup
+    try:
+        redis_client = redis.Redis(
+            host='localhost',
+            port=6379,
+            db=0,
+            decode_responses=True,
+            socket_connect_timeout=5,
+            socket_timeout=5
+        )
+        # Test Redis connection
+        redis_client.ping()
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ Redis connected successfully!")
+    except redis.ConnectionError:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Redis connection failed - running without Redis storage")
+        redis_client = None
+    except Exception as e:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Redis setup error: {e}")
+        redis_client = None
+
     # Dictionary to store latest prices - initialize with 0 for all coins
     latest_prices = {coin: 0 for coin in coins}
     
@@ -56,19 +78,39 @@ async def monitor_futures_ltp(coins):
             async def on_trade_update(data):
                 nonlocal last_data_time
                 try:
-                    last_data_time = datetime.now()  # Update last data time
-                    
+                    current_time = datetime.now()
+                    last_data_time = current_time  # Update last data time
+
                     if isinstance(data, dict) and 'data' in data:
                         trade_data = json.loads(data['data']) if isinstance(data['data'], str) else data['data']
-                        
+
                         # Get symbol and price from trade data
                         if 's' in trade_data and 'p' in trade_data:
                             symbol = trade_data['s']
                             price = float(trade_data['p'])
-                            
+
                             # Update the price for this symbol
                             if symbol in latest_prices:
                                 latest_prices[symbol] = price
+
+                                # Save to Redis in real-time (Option A)
+                                if redis_client:
+                                    try:
+                                        redis_data = {
+                                            "ticker": symbol,
+                                            "price": price,
+                                            "timestamp": current_time.isoformat()
+                                        }
+                                        # Store with key pattern: ltp:{ticker}
+                                        redis_key = f"ltp:{symbol}"
+                                        redis_client.set(redis_key, json.dumps(redis_data))
+
+                                        # Optional: Set TTL (Time To Live) of 1 hour for auto-cleanup
+                                        redis_client.expire(redis_key, 3600)
+
+                                    except Exception as redis_error:
+                                        print(f"[{current_time.strftime('%H:%M:%S')}] ⚠️ Redis save error: {redis_error}")
+
                 except Exception as e:
                     print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Error processing data: {e}")
             
@@ -101,7 +143,7 @@ async def monitor_futures_ltp(coins):
     await connect_and_subscribe()
     
     print(f"\nMonitoring {len(coins)} futures tokens...")
-    print("Updates display every 10 seconds. Press Ctrl+C to stop.\n")
+    print("LTP data is being saved to Redis in real-time. Minimal console output. Press Ctrl+C to stop.\n")
     
     # Display loop with connection monitoring
     check_interval = 10  # seconds
@@ -150,33 +192,45 @@ async def monitor_futures_ltp(coins):
                 print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ Max reconnection attempts reached. Please restart the program.")
                 break
         
-        # Display prices
-        print(f"\n{'='*50}")
+        # Display prices (COMMENTED OUT - Data now saved to Redis)
+        # print(f"\n{'='*50}")
+        # status_icon = "🟢" if is_connected else "🔴"
+        # print(f"FUTURES LTP {status_icon} - {datetime.now().strftime('%H:%M:%S')}")
+        #
+        # if not is_connected:
+        #     print(f"Status: DISCONNECTED - Reconnecting...")
+        # elif time_since_last_data > 30:
+        #     print(f"Status: Connected (No data for {int(time_since_last_data)}s)")
+        # else:
+        #     print(f"Status: Connected (Live)")
+        #
+        # print(f"{'='*50}")
+        #
+        # for token in coins:
+        #     price = latest_prices.get(token, 0)
+        #     if price > 0:
+        #         # Display with appropriate currency symbol and decimals
+        #         if '_INR' in token:
+        #             formatted = format_price(price, '₹')
+        #         else:
+        #             formatted = format_price(price, '$')
+        #         print(f"{token:<15} : {formatted}")
+        #     else:
+        #         print(f"{token:<15} : Waiting...")
+        #
+        # print(f"{'='*50}")
+
+        # Status update (keeping minimal logging)
         status_icon = "🟢" if is_connected else "🔴"
-        print(f"FUTURES LTP {status_icon} - {datetime.now().strftime('%H:%M:%S')}")
-        
         if not is_connected:
-            print(f"Status: DISCONNECTED - Reconnecting...")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] {status_icon} DISCONNECTED - Reconnecting...")
         elif time_since_last_data > 30:
-            print(f"Status: Connected (No data for {int(time_since_last_data)}s)")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] {status_icon} Connected (No data for {int(time_since_last_data)}s)")
         else:
-            print(f"Status: Connected (Live)")
-        
-        print(f"{'='*50}")
-        
-        for token in coins:
-            price = latest_prices.get(token, 0)
-            if price > 0:
-                # Display with appropriate currency symbol and decimals
-                if '_INR' in token:
-                    formatted = format_price(price, '₹')
-                else:
-                    formatted = format_price(price, '$')
-                print(f"{token:<15} : {formatted}")
-            else:
-                print(f"{token:<15} : Waiting...")
-        
-        print(f"{'='*50}")
+            # Only print status every 60 seconds when connected and receiving data
+            if int(time_since_last_data) % 60 == 0:
+                active_symbols = sum(1 for price in latest_prices.values() if price > 0)
+                print(f"[{datetime.now().strftime('%H:%M:%S')}] {status_icon} Connected - {active_symbols}/{len(coins)} symbols active - Data saving to Redis")
 
 
 # Example usage
