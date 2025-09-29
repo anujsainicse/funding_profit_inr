@@ -112,17 +112,26 @@ LTP data is being saved to Redis in real-time. Minimal console output. Press Ctr
 # Connect to Redis CLI
 redis-cli
 
-# List all LTP keys
-127.0.0.1:6379> keys ltp:*
-1) "ltp:B-BTC_USDT"
-2) "ltp:B-ETH_USDT"
-3) "ltp:B-SOL_USDT"
-4) "ltp:B-BNB_USDT"
-5) "ltp:B-DOGE_USDT"
+# List all futures data keys
+127.0.0.1:6379> keys coindcx_futures:*
+1) "coindcx_futures:BTC"
+2) "coindcx_futures:ETH"
+3) "coindcx_futures:SOL"
+4) "coindcx_futures:BNB"
+5) "coindcx_futures:DOGE"
 
-# Get specific price data
-127.0.0.1:6379> get ltp:B-BTC_USDT
-"{\"ticker\": \"B-BTC_USDT\", \"price\": 43245.50, \"timestamp\": \"2024-09-29T14:30:25.123456\"}"
+# Get specific coin's complete data
+127.0.0.1:6379> hgetall coindcx_futures:BTC
+1) "ltp"
+2) "43245.50"
+3) "timestamp"
+4) "2024-09-29T14:30:25.123456"
+5) "original_symbol"
+6) "B-BTC_USDT"
+
+# Get only the price for a specific coin
+127.0.0.1:6379> hget coindcx_futures:ETH ltp
+"2587.32"
 ```
 
 ### Customizing Monitored Symbols
@@ -175,37 +184,46 @@ main(
 ## 💾 Redis Data Structure
 
 ### Data Storage Format
-The application stores Last Traded Price (LTP) data in Redis with the following structure:
+The application stores Last Traded Price (LTP) data in Redis using hash structures:
 
-**Redis Key Pattern**: `ltp:{symbol}`
-- Example: `ltp:B-BTC_USDT`, `ltp:B-ETH_USDT`
+**Redis Hash Key Pattern**: `coindcx_futures:{COIN}`
+- Example: `coindcx_futures:BTC`, `coindcx_futures:ETH`, `coindcx_futures:SOL`
 
-**JSON Data Format**:
-```json
-{
-  "ticker": "B-BTC_USDT",
-  "price": 43245.50,
-  "timestamp": "2024-09-29T14:30:25.123456"
-}
-```
+**Hash Fields Structure**:
+| Field | Description | Example |
+|-------|-------------|---------|
+| `ltp` | Latest traded price | `43245.50` |
+| `timestamp` | ISO formatted timestamp | `2024-09-29T14:30:25.123456` |
+| `original_symbol` | Full CoinDCX symbol | `B-BTC_USDT` |
 
 ### Key Features
 - **Real-time updates**: Data saved instantly when price changes occur
-- **Structured format**: Consistent JSON structure for easy parsing
+- **Hash structure**: Efficient field-based storage for multiple data points
 - **ISO timestamps**: Precise timing for each price update
+- **Original symbol tracking**: Preserves full CoinDCX symbol format
 - **Auto-cleanup**: 1-hour TTL (Time To Live) prevents memory buildup
-- **High-performance**: Redis provides microsecond-level access times
+- **High-performance**: Redis hash operations provide optimal performance
 
 ### Redis Commands for Data Access
 
-**List all active symbols**:
+**List all active coins**:
 ```bash
-redis-cli keys "ltp:*"
+redis-cli keys "coindcx_futures:*"
 ```
 
-**Get latest price for specific symbol**:
+**Get all data for specific coin**:
 ```bash
-redis-cli get "ltp:B-BTC_USDT"
+redis-cli hgetall "coindcx_futures:BTC"
+```
+
+**Get only LTP for specific coin**:
+```bash
+redis-cli hget "coindcx_futures:ETH" "ltp"
+```
+
+**Get timestamp for specific coin**:
+```bash
+redis-cli hget "coindcx_futures:BTC" "timestamp"
 ```
 
 **Monitor real-time updates**:
@@ -215,7 +233,7 @@ redis-cli monitor
 
 **Check key expiration time**:
 ```bash
-redis-cli ttl "ltp:B-BTC_USDT"
+redis-cli ttl "coindcx_futures:BTC"
 ```
 
 ### Integration Examples
@@ -223,19 +241,25 @@ redis-cli ttl "ltp:B-BTC_USDT"
 **Python - Read from Redis**:
 ```python
 import redis
-import json
 
 # Connect to Redis
 r = redis.Redis(host='localhost', port=6379, db=0, decode_responses=True)
 
-# Get latest BTC price
-btc_data = json.loads(r.get('ltp:B-BTC_USDT'))
-print(f"BTC Price: ${btc_data['price']} at {btc_data['timestamp']}")
+# Get latest BTC data
+btc_data = r.hgetall('coindcx_futures:BTC')
+print(f"BTC Price: ${btc_data['ltp']} at {btc_data['timestamp']}")
+print(f"Original Symbol: {btc_data['original_symbol']}")
 
-# Get all symbols and prices
-for key in r.keys('ltp:*'):
-    data = json.loads(r.get(key))
-    print(f"{data['ticker']}: ${data['price']}")
+# Get only LTP for ETH
+eth_price = r.hget('coindcx_futures:ETH', 'ltp')
+print(f"ETH Price: ${eth_price}")
+
+# Get all active coins and their prices
+for key in r.keys('coindcx_futures:*'):
+    coin = key.split(':')[1]  # Extract coin name (BTC, ETH, etc.)
+    price = r.hget(key, 'ltp')
+    timestamp = r.hget(key, 'timestamp')
+    print(f"{coin}: ${price} ({timestamp})")
 ```
 
 **Node.js - Read from Redis**:
@@ -243,10 +267,13 @@ for key in r.keys('ltp:*'):
 const redis = require('redis');
 const client = redis.createClient();
 
-// Get latest ETH price
-const ethData = await client.get('ltp:B-ETH_USDT');
-const eth = JSON.parse(ethData);
-console.log(`ETH Price: $${eth.price} at ${eth.timestamp}`);
+// Get latest ETH data
+const ethData = await client.hGetAll('coindcx_futures:ETH');
+console.log(`ETH Price: $${ethData.ltp} at ${ethData.timestamp}`);
+
+// Get only BTC price
+const btcPrice = await client.hGet('coindcx_futures:BTC', 'ltp');
+console.log(`BTC Price: $${btcPrice}`);
 ```
 
 ## 🔐 Security Features

@@ -93,20 +93,24 @@ async def monitor_futures_ltp(coins):
                             if symbol in latest_prices:
                                 latest_prices[symbol] = price
 
-                                # Save to Redis in real-time (Option A)
+                                # Save to Redis in real-time (Option A) - Hash Schema
                                 if redis_client:
                                     try:
-                                        redis_data = {
-                                            "ticker": symbol,
-                                            "price": price,
-                                            "timestamp": current_time.isoformat()
-                                        }
-                                        # Store with key pattern: ltp:{ticker}
-                                        redis_key = f"ltp:{symbol}"
-                                        redis_client.set(redis_key, json.dumps(redis_data))
+                                        # Extract coin name from symbol (B-ETH_USDT -> ETH)
+                                        coin_name = symbol.replace('B-', '').split('_')[0]
+
+                                        # Redis hash key: coindcx_futures:{COIN}
+                                        redis_hash_key = f"coindcx_futures:{coin_name}"
+
+                                        # Hash fields: ltp, timestamp, original_symbol
+                                        redis_client.hset(redis_hash_key, mapping={
+                                            "ltp": str(price),
+                                            "timestamp": current_time.isoformat(),
+                                            "original_symbol": symbol
+                                        })
 
                                         # Optional: Set TTL (Time To Live) of 1 hour for auto-cleanup
-                                        redis_client.expire(redis_key, 3600)
+                                        redis_client.expire(redis_hash_key, 3600)
 
                                     except Exception as redis_error:
                                         print(f"[{current_time.strftime('%H:%M:%S')}] ⚠️ Redis save error: {redis_error}")
