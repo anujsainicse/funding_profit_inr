@@ -2,6 +2,23 @@
 
 A comprehensive Python-based trading suite for CoinDCX futures markets with **real-time price monitoring**, **Redis data storage**, and automated trading capabilities.
 
+## 🎯 NEW: Unified Crypto Monitor
+
+**🚀 QUICK START - Run All Services at Once:**
+
+```bash
+# Start all monitoring services in one command
+python3 start_all.py
+```
+
+The **Unified Crypto Monitor** provides centralized management for all crypto monitoring services:
+- CoinDCX Futures LTP Monitor
+- CoinDCX Funding Rate Monitor
+- Bybit Spot Price Monitor
+
+✅ **Benefits**: Single command, health monitoring, auto-restart, centralized logging
+📖 **Full Documentation**: See [UNIFIED_MONITOR.md](UNIFIED_MONITOR.md)
+
 ## 🚀 Features
 
 ### Real-Time Price Monitoring with Redis Storage (`coindcx_fu_ltp_ws_redis.py`)

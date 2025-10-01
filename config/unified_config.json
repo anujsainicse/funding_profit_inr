@@ -1,0 +1,115 @@
+{
+  "description": "Unified configuration for all crypto monitoring services",
+  "version": "1.0",
+  "last_updated": "2025-10-01",
+
+  "redis": {
+    "host": "localhost",
+    "port": 6379,
+    "password": null,
+    "db": 0,
+    "decode_responses": true
+  },
+
+  "services": {
+    "coindcx_ltp": {
+      "enabled": true,
+      "name": "CoinDCX Futures LTP Monitor",
+      "symbols": [
+        "B-BTC_USDT",
+        "B-ETH_USDT",
+        "B-SOL_USDT",
+        "B-BNB_USDT",
+        "B-DOGE_USDT"
+      ],
+      "settings": {
+        "redis_ttl": 3600,
+        "reconnect_delay": 5,
+        "max_reconnect_attempts": 10,
+        "update_interval": 10
+      },
+      "redis_key_prefix": "coindcx_futures"
+    },
+
+    "coindcx_funding": {
+      "enabled": true,
+      "name": "CoinDCX Funding Rate Monitor",
+      "symbols": [
+        "B-BTC_USDT",
+        "B-ETH_USDT",
+        "B-SOL_USDT",
+        "B-BNB_USDT",
+        "B-DOGE_USDT"
+      ],
+      "settings": {
+        "api_timeout": 10,
+        "redis_ttl": 3600,
+        "fetch_interval": 300,
+        "retry_attempts": 3
+      },
+      "redis_key_prefix": "coindcx_funding"
+    },
+
+    "bybit_spot": {
+      "enabled": true,
+      "name": "Bybit Spot Price Monitor",
+      "symbols": [
+        "BTCUSDT",
+        "ETHUSDT",
+        "SOLUSDT",
+        "BNBUSDT",
+        "DOGEUSDT"
+      ],
+      "settings": {
+        "redis_ttl": 3600,
+        "reconnect_delay": 5,
+        "max_reconnect_attempts": 10,
+        "update_interval": 1
+      },
+      "redis_key_prefix": "bybit_spot"
+    }
+  },
+
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    "console": true,
+    "file": {
+      "enabled": true,
+      "path": "logs/unified_crypto_monitor.log",
+      "max_size_mb": 100,
+      "backup_count": 5
+    }
+  },
+
+  "monitoring": {
+    "health_check_interval": 30,
+    "status_update_interval": 60,
+    "auto_restart": true,
+    "max_restart_attempts": 5,
+    "restart_delay": 10
+  },
+
+  "symbol_mapping": {
+    "BTC": {
+      "coindcx_futures": "B-BTC_USDT",
+      "bybit_spot": "BTCUSDT"
+    },
+    "ETH": {
+      "coindcx_futures": "B-ETH_USDT",
+      "bybit_spot": "ETHUSDT"
+    },
+    "SOL": {
+      "coindcx_futures": "B-SOL_USDT",
+      "bybit_spot": "SOLUSDT"
+    },
+    "BNB": {
+      "coindcx_futures": "B-BNB_USDT",
+      "bybit_spot": "BNBUSDT"
+    },
+    "DOGE": {
+      "coindcx_futures": "B-DOGE_USDT",
+      "bybit_spot": "DOGEUSDT"
+    }
+  }
+}
