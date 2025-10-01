@@ -82,4 +82,4 @@ trading_logs/
 backtest_results/
 *.db
 *.sqlite
-*.sqlite3bybitspotpy/
+*.sqlite3
