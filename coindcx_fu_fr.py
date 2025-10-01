@@ -1,8 +1,44 @@
 import requests
 import time
 import redis
+import json
+import os
 from datetime import datetime
 from typing import Dict, Optional, Any
+
+
+def load_config() -> Dict[str, Any]:
+    """
+    Load configuration from coindcx-symbol-config.json file.
+
+    Returns:
+        dict: Configuration data with symbols and settings
+    """
+    config_file = os.path.join(os.path.dirname(__file__), 'coindcx-symbol-config.json')
+
+    try:
+        with open(config_file, 'r') as f:
+            config = json.load(f)
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ Config loaded: {len(config.get('symbols', []))} symbols")
+        return config
+    except FileNotFoundError:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Config file not found, using default symbols")
+        return {
+            "symbols": ["B-BTC_USDT", "B-ETH_USDT", "B-SOL_USDT", "B-BNB_USDT", "B-DOGE_USDT"],
+            "settings": {"api_timeout": 10, "redis_ttl": 3600}
+        }
+    except json.JSONDecodeError as e:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Config file invalid JSON: {e}")
+        return {
+            "symbols": ["B-BTC_USDT", "B-ETH_USDT", "B-SOL_USDT", "B-BNB_USDT", "B-DOGE_USDT"],
+            "settings": {"api_timeout": 10, "redis_ttl": 3600}
+        }
+    except Exception as e:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Error loading config: {e}")
+        return {
+            "symbols": ["B-BTC_USDT", "B-ETH_USDT", "B-SOL_USDT", "B-BNB_USDT", "B-DOGE_USDT"],
+            "settings": {"api_timeout": 10, "redis_ttl": 3600}
+        }
 
 
 def setup_redis_connection() -> Optional[redis.Redis]:
@@ -136,18 +172,21 @@ def get_coindcx_funding_rate(symbol: str) -> Dict[str, Optional[float]]:
         return result
 
 
-def get_all_coindcx_funding_rates() -> Dict[str, Any]:
+def get_filtered_coindcx_funding_rates(target_symbols: list = None) -> Dict[str, Any]:
     """
-    Fetch funding rates for all available CoinDCX futures symbols.
-    
+    Fetch funding rates for specific CoinDCX futures symbols.
+
+    Args:
+        target_symbols: List of specific symbols to fetch (if None, uses config file symbols)
+
     Returns:
         dict: A dictionary containing:
             - "symbols": Dict with symbol as key and funding rates as value
             - "error": Error message if request fails (str or None if successful)
             - "total_symbols": Number of symbols retrieved
-    
+
     Example:
-        >>> result = get_all_coindcx_funding_rates()
+        >>> result = get_filtered_coindcx_funding_rates(['B-BTC_USDT', 'B-ETH_USDT'])
         >>> if result.get("error"):
         ...     print(f"Error: {result['error']}")
         ... else:
@@ -155,59 +194,74 @@ def get_all_coindcx_funding_rates() -> Dict[str, Any]:
         ...     for symbol, rates in result['symbols'].items():
         ...         print(f"{symbol}: Current={rates['current_funding']}, Estimated={rates['estimated_funding']}")
     """
-    
+
+    # Load symbols from config file if not provided
+    if target_symbols is None:
+        config = load_config()
+        target_symbols = config.get('symbols', [])
+        api_timeout = config.get('settings', {}).get('api_timeout', 10)
+    else:
+        api_timeout = 10
+
     # API endpoint for CoinDCX futures market data
     api_url = "https://public.coindcx.com/market_data/v3/current_prices/futures/rt"
-    
+
     # Initialize return dictionary
     result = {
         "symbols": {},
         "error": None,
         "total_symbols": 0
     }
-    
+
     try:
         # Make GET request to the API
-        response = requests.get(api_url, timeout=10)
-        
+        response = requests.get(api_url, timeout=api_timeout)
+
         # Check if request was successful
         if response.status_code != 200:
             result["error"] = f"API request failed with status code: {response.status_code}"
             return result
-        
+
         # Parse JSON response
         data = response.json()
-        
+
         # Check if the response has the expected structure
         if not isinstance(data, dict) or "prices" not in data:
             result["error"] = "Unexpected API response format"
             return result
-        
+
         prices_data = data.get("prices", {})
-        
-        # Process each symbol
-        for symbol, symbol_data in prices_data.items():
-            funding_info = {
-                "current_funding": None,
-                "estimated_funding": None
-            }
-            
-            # Get current funding rate (fr)
-            if "fr" in symbol_data:
-                try:
-                    funding_info["current_funding"] = float(symbol_data["fr"])
-                except (ValueError, TypeError):
-                    pass
-            
-            # Get estimated funding rate (efr)
-            if "efr" in symbol_data:
-                try:
-                    funding_info["estimated_funding"] = float(symbol_data["efr"])
-                except (ValueError, TypeError):
-                    pass
-            
-            result["symbols"][symbol] = funding_info
-        
+
+        # Convert target symbols to uppercase for consistency
+        target_symbols_upper = [symbol.upper() for symbol in target_symbols]
+
+        # Process only the target symbols
+        for symbol in target_symbols_upper:
+            if symbol in prices_data:
+                symbol_data = prices_data[symbol]
+                funding_info = {
+                    "current_funding": None,
+                    "estimated_funding": None
+                }
+
+                # Get current funding rate (fr)
+                if "fr" in symbol_data:
+                    try:
+                        funding_info["current_funding"] = float(symbol_data["fr"])
+                    except (ValueError, TypeError):
+                        pass
+
+                # Get estimated funding rate (efr)
+                if "efr" in symbol_data:
+                    try:
+                        funding_info["estimated_funding"] = float(symbol_data["efr"])
+                    except (ValueError, TypeError):
+                        pass
+
+                result["symbols"][symbol] = funding_info
+            else:
+                print(f"Warning: Symbol '{symbol}' not found in CoinDCX API response")
+
         result["total_symbols"] = len(result["symbols"])
         return result
         
@@ -226,6 +280,20 @@ def get_all_coindcx_funding_rates() -> Dict[str, Any]:
     except Exception as e:
         result["error"] = f"Unexpected error: {str(e)}"
         return result
+
+
+def get_all_coindcx_funding_rates() -> Dict[str, Any]:
+    """
+    Fetch funding rates for LTP symbols (filtered version).
+    This function now fetches only the symbols available in the LTP WebSocket file.
+
+    Returns:
+        dict: A dictionary containing:
+            - "symbols": Dict with symbol as key and funding rates as value
+            - "error": Error message if request fails (str or None if successful)
+            - "total_symbols": Number of symbols retrieved
+    """
+    return get_filtered_coindcx_funding_rates()
 
 
 def format_funding_rate(rate: Optional[float]) -> str:
@@ -257,6 +325,10 @@ def save_funding_rates_to_redis(redis_client: redis.Redis, funding_data: Dict[st
     if not redis_client or funding_data.get("error"):
         return {"saved": 0, "errors": 0}
 
+    # Load TTL from config
+    config = load_config()
+    redis_ttl = config.get('settings', {}).get('redis_ttl', 3600)
+
     saved_count = 0
     error_count = 0
     current_time = datetime.now()
@@ -285,8 +357,8 @@ def save_funding_rates_to_redis(redis_client: redis.Redis, funding_data: Dict[st
             if funding_fields:
                 redis_client.hset(redis_hash_key, mapping=funding_fields)
 
-                # Set TTL of 1 hour (same as LTP data)
-                redis_client.expire(redis_hash_key, 3600)
+                # Set TTL from config (same as LTP data)
+                redis_client.expire(redis_hash_key, redis_ttl)
 
                 saved_count += 1
 

@@ -17,9 +17,49 @@ sys.path.append(os.path.join(os.path.dirname(__file__), 'coindcx-futures'))
 from coindcx_futures import CoinDCXFutures
 
 
+def load_config() -> dict:
+    """
+    Load configuration from coindcx-symbol-config.json file.
+
+    Returns:
+        dict: Configuration data with symbols and settings
+    """
+    config_file = os.path.join(os.path.dirname(__file__), 'coindcx-symbol-config.json')
+
+    try:
+        with open(config_file, 'r') as f:
+            config = json.load(f)
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ Config loaded: {len(config.get('symbols', []))} symbols")
+        return config
+    except FileNotFoundError:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Config file not found, using default symbols")
+        return {
+            "symbols": ["B-BTC_USDT", "B-ETH_USDT", "B-SOL_USDT", "B-BNB_USDT", "B-DOGE_USDT"],
+            "settings": {"redis_ttl": 3600, "reconnect_delay": 5, "max_reconnect_attempts": 10}
+        }
+    except json.JSONDecodeError as e:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Config file invalid JSON: {e}")
+        return {
+            "symbols": ["B-BTC_USDT", "B-ETH_USDT", "B-SOL_USDT", "B-BNB_USDT", "B-DOGE_USDT"],
+            "settings": {"redis_ttl": 3600, "reconnect_delay": 5, "max_reconnect_attempts": 10}
+        }
+    except Exception as e:
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ Error loading config: {e}")
+        return {
+            "symbols": ["B-BTC_USDT", "B-ETH_USDT", "B-SOL_USDT", "B-BNB_USDT", "B-DOGE_USDT"],
+            "settings": {"redis_ttl": 3600, "reconnect_delay": 5, "max_reconnect_attempts": 10}
+        }
+
+
 async def monitor_futures_ltp(coins):
     """Monitor futures LTP using WebSocket with automatic reconnection and Redis storage"""
     client = CoinDCXFutures()
+
+    # Load config for settings
+    config = load_config()
+    redis_ttl = config.get('settings', {}).get('redis_ttl', 3600)
+    reconnect_delay = config.get('settings', {}).get('reconnect_delay', 5)
+    max_reconnect_attempts = config.get('settings', {}).get('max_reconnect_attempts', 10)
 
     # Redis connection setup
     try:
@@ -48,8 +88,6 @@ async def monitor_futures_ltp(coins):
     is_connected = False
     last_data_time = datetime.now()
     reconnect_attempts = 0
-    max_reconnect_attempts = 10
-    reconnect_delay = 5  # seconds
     
     # Helper function to format price with appropriate decimals
     def format_price(price, currency_symbol):
@@ -109,8 +147,8 @@ async def monitor_futures_ltp(coins):
                                             "original_symbol": symbol
                                         })
 
-                                        # Optional: Set TTL (Time To Live) of 1 hour for auto-cleanup
-                                        redis_client.expire(redis_hash_key, 3600)
+                                        # Set TTL from config for auto-cleanup
+                                        redis_client.expire(redis_hash_key, redis_ttl)
 
                                     except Exception as redis_error:
                                         print(f"[{current_time.strftime('%H:%M:%S')}] ⚠️ Redis save error: {redis_error}")
@@ -239,18 +277,16 @@ async def monitor_futures_ltp(coins):
 
 # Example usage
 if __name__ == "__main__":
-    # Specify the futures coins to monitor
-    coins_to_monitor = [
-        'B-BTC_USDT',
-        'B-ETH_USDT', 
-        'B-SOL_USDT',
-        'B-BNB_USDT',
-        'B-DOGE_USDT'
-        
-    ]
-    
-  
-    
+    # Load coins to monitor from config file
+    config = load_config()
+    coins_to_monitor = config.get('symbols', [])
+
+    if not coins_to_monitor:
+        print("No symbols found in config. Exiting.")
+        exit(1)
+
+    print(f"Monitoring {len(coins_to_monitor)} symbols from config: {', '.join(coins_to_monitor)}")
+
     try:
         asyncio.run(monitor_futures_ltp(coins_to_monitor))
     except KeyboardInterrupt:

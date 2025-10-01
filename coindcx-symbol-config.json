@@ -1,0 +1,18 @@
+{
+  "description": "Configuration file for CoinDCX futures symbols to monitor",
+  "version": "1.0",
+  "last_updated": "2025-09-30",
+  "symbols": [
+    "B-BTC_USDT",
+    "B-ETH_USDT",
+    "B-SOL_USDT",
+    "B-BNB_USDT",
+    "B-DOGE_USDT"
+  ],
+  "settings": {
+    "api_timeout": 10,
+    "redis_ttl": 3600,
+    "reconnect_delay": 5,
+    "max_reconnect_attempts": 10
+  }
+}
