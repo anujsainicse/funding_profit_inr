@@ -23,6 +23,7 @@ redis-cli HGETALL coindcx_futures:BTC
 | **[SETUP_GUIDE.md](SETUP_GUIDE.md)** | Installation and initial setup | New team members |
 | **[CONFIGURATION_GUIDE.md](CONFIGURATION_GUIDE.md)** | Customization and configuration | Developers, DevOps |
 | **[TROUBLESHOOTING_GUIDE.md](TROUBLESHOOTING_GUIDE.md)** | Problem diagnosis and solutions | Support, Operations |
+| **[LTP_fetch_README.md](LTP_fetch_README.md)** | LTP data retrieval API reference | Developers |
 
 ## 🎯 What This System Does
 
@@ -41,6 +42,48 @@ Unified Launcher → [Bybit Monitor] → Redis
 ```
 
 **Monitored Cryptocurrencies**: BTC, ETH, SOL, BNB, DOGE
+
+## 🔧 LTP Data Retrieval Modules
+
+The system includes specialized modules for retrieving Last Traded Price (LTP) data:
+
+### Core LTP Modules
+
+| Module | Purpose | Description |
+|--------|---------|-------------|
+| **[LTP_fetch.py](LTP_fetch.py)** | Main LTP API | Comprehensive data retrieval from both Bybit and CoinDCX with funding rates |
+| **[LTP_fetch_test.py](LTP_fetch_test.py)** | Test script | Simple test demonstrating LTP data retrieval functionality |
+| **[crypto_data_retriever.py](crypto_data_retriever.py)** | Redis interface | Core data retrieval engine from Redis database |
+
+### Quick LTP Usage
+
+```python
+from LTP_fetch import get_crypto_ltp
+
+# Get comprehensive data for any crypto
+eth_data = get_crypto_ltp('ETH')
+
+if eth_data['success']:
+    # Access Bybit data
+    bybit_price = eth_data['bybit_data']['ltp']
+
+    # Access CoinDCX data
+    coindcx_price = eth_data['coindcx_data']['ltp']
+    funding_rate = eth_data['coindcx_data']['current_funding_rate']
+
+    print(f"ETH Bybit: ${bybit_price}")
+    print(f"ETH CoinDCX: ${coindcx_price}")
+    print(f"Funding Rate: {funding_rate}")
+```
+
+### LTP Features
+
+- **🔄 Real-time Data**: Live prices from both exchanges
+- **💰 Funding Rates**: Current and estimated funding rates from CoinDCX
+- **📊 Price Analysis**: Automatic price difference calculations
+- **⚡ Batch Processing**: Handle multiple cryptocurrencies at once
+- **🛡️ Error Handling**: Comprehensive error management
+- **📚 Full Documentation**: Complete API reference in [LTP_fetch_README.md](LTP_fetch_README.md)
 
 ## 📊 Live Data Examples
 
@@ -198,7 +241,12 @@ funding_profit_inr/
 ├── coindcx_fu_fr.py                   # CoinDCX funding rates
 ├── coindcx_fu_ltp_ws_redis.py         # CoinDCX LTP WebSocket
 ├── bybitspotpy/src/main.py            # Bybit spot monitor
+├── LTP_fetch.py                       # 📊 LTP data retrieval API
+├── LTP_fetch_test.py                  # 🧪 LTP test script
+├── crypto_data_retriever.py           # 🔍 Redis data interface
+├── health_check.py                    # 💊 System health monitor
 ├── coindcx-symbol-config.json         # Configuration
+├── LTP_fetch_README.md                # 📚 LTP API documentation
 ├── CRYPTO_MONITORING_SYSTEM.md        # 📖 Complete docs
 ├── SETUP_GUIDE.md                     # 🛠️ Installation
 ├── CONFIGURATION_GUIDE.md             # ⚙️ Customization

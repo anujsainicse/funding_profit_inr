@@ -78,12 +78,22 @@ redis-cli HGETALL coindcx_futures:BTC
 
 ## 📋 System Components
 
+### **Core Monitoring Services**
 | Component | Purpose | Data Source | Update Frequency |
 |-----------|---------|-------------|------------------|
 | **Bybit Spot Monitor** | Spot market prices | Bybit WebSocket | Real-time |
 | **CoinDCX LTP Monitor** | Futures last traded price | CoinDCX WebSocket | Real-time |
 | **CoinDCX Funding Monitor** | Funding rates | CoinDCX REST API | 30 minutes |
 | **Process Manager** | System orchestration | N/A | Continuous |
+
+### **LTP Data Retrieval Modules**
+| Module | Purpose | Usage | Features |
+|--------|---------|-------|----------|
+| **LTP_fetch.py** | Main LTP API | `get_crypto_ltp('ETH')` | Comprehensive data + funding rates |
+| **LTP_fetch_test.py** | Test script | `python LTP_fetch_test.py` | Simple functionality test |
+| **crypto_data_retriever.py** | Redis interface | Backend engine | Raw Redis data access |
+
+**📚 Complete LTP API Documentation**: [LTP_fetch_README.md](LTP_fetch_README.md)
 
 ## 💾 Redis Data Structure
 
@@ -125,6 +135,66 @@ redis-cli HGET coindcx_futures:BTC current_funding_rate
 # Get complete BTC data
 redis-cli HGETALL coindcx_futures:BTC
 ```
+
+## 🔧 LTP Data Retrieval API
+
+The system includes powerful Python modules for programmatic access to cryptocurrency data:
+
+### **Quick LTP Usage**
+```python
+from LTP_fetch import get_crypto_ltp, get_crypto_ltp_formatted
+
+# Get comprehensive data for any cryptocurrency
+eth_data = get_crypto_ltp('ETH')
+
+if eth_data['success']:
+    # Access Bybit spot data
+    bybit_price = eth_data['bybit_data']['ltp']
+    bybit_time = eth_data['bybit_data']['timestamp']
+
+    # Access CoinDCX futures data
+    coindcx_price = eth_data['coindcx_data']['ltp']
+    coindcx_time = eth_data['coindcx_data']['timestamp']
+
+    # Access funding rate data
+    current_funding = eth_data['coindcx_data']['current_funding_rate']
+    estimated_funding = eth_data['coindcx_data']['estimated_funding_rate']
+
+    print(f"ETH Bybit: ${bybit_price}")
+    print(f"ETH CoinDCX: ${coindcx_price}")
+    print(f"Funding Rate: {current_funding}")
+```
+
+### **Advanced Features**
+```python
+# Get data with price analysis
+eth_analysis = get_crypto_ltp_formatted('ETH')
+if 'price_analysis' in eth_analysis:
+    analysis = eth_analysis['price_analysis']
+    print(f"Price difference: {analysis['percentage_difference']}%")
+    print(f"Higher exchange: {analysis['higher_exchange']}")
+
+# Batch processing for multiple cryptos
+from LTP_fetch import get_multiple_crypto_ltp_formatted
+symbols = ['BTC', 'ETH', 'SOL', 'BNB']
+multi_data = get_multiple_crypto_ltp_formatted(symbols)
+
+for symbol, data in multi_data.items():
+    if data['success']:
+        print(f"{symbol}: Bybit ${data['bybit_data']['ltp']}, "
+              f"CoinDCX ${data['coindcx_data']['ltp']}")
+```
+
+### **Testing LTP Modules**
+```bash
+# Test basic functionality
+python LTP_fetch_test.py
+
+# Run full examples
+python LTP_fetch.py
+```
+
+**📚 Complete API Documentation**: [LTP_fetch_README.md](LTP_fetch_README.md)
 
 ## 🔧 Configuration
 
