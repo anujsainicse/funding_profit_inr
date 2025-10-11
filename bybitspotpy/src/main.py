@@ -2,6 +2,8 @@ import asyncio
 import json
 import os
 import signal
+import logging
+import logging.handlers
 from pathlib import Path
 from dotenv import load_dotenv
 import structlog
@@ -10,20 +12,50 @@ from .bybit_client import SimpleBybitSpotClient
 # Load environment variables
 load_dotenv()
 
-# Configure logging
+# Create logs directory
+LOG_DIR = Path(__file__).parent.parent / 'logs'
+LOG_DIR.mkdir(exist_ok=True)
+
+# Configure standard logging
+log_file = LOG_DIR / 'bybit_spot.log'
+file_handler = logging.handlers.RotatingFileHandler(
+    log_file,
+    maxBytes=10 * 1024 * 1024,  # 10 MB
+    backupCount=5
+)
+file_handler.setLevel(logging.DEBUG)
+
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+
+# Configure structlog
 structlog.configure(
     processors=[
         structlog.stdlib.filter_by_level,
+        structlog.stdlib.add_logger_name,
         structlog.stdlib.add_log_level,
+        structlog.stdlib.PositionalArgumentsFormatter(),
         structlog.processors.TimeStamper(fmt="iso"),
+        structlog.processors.StackInfoRenderer(),
+        structlog.processors.format_exc_info,
+        structlog.processors.UnicodeDecoder(),
         structlog.processors.JSONRenderer()
     ],
-    logger_factory=structlog.stdlib.LoggerFactory(),
     wrapper_class=structlog.stdlib.BoundLogger,
+    context_class=dict,
+    logger_factory=structlog.stdlib.LoggerFactory(),
     cache_logger_on_first_use=True,
 )
 
+# Configure root logger
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(message)s',
+    handlers=[file_handler, console_handler]
+)
+
 logger = structlog.get_logger()
+logger.info("Logging configured", log_file=str(log_file), log_dir=str(LOG_DIR))
 
 class SimpleCryptoPriceBot:
     """Simple crypto price bot for Bybit spot."""
